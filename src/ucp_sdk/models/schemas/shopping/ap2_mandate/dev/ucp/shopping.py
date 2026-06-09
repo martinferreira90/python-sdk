@@ -21,6 +21,9 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 from ....checkout import Checkout as Checkout_1
+from ....checkout_complete_request import (
+    CheckoutCompleteRequest as CheckoutCompleteRequest_1,
+)
 from ... import CheckoutMandate, MerchantAuthorization
 
 
@@ -51,6 +54,20 @@ class Checkout(Checkout_1):
         extra="allow",
     )
     ap2: Ap2 | None = None
+    """
+    AP2 extension data including merchant authorization.
+    """
+
+
+class CheckoutCompleteRequest(CheckoutCompleteRequest_1):
+    """
+    Checkout extended with AP2 mandate support.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    ap2: Ap2
     """
     AP2 extension data including merchant authorization.
     """

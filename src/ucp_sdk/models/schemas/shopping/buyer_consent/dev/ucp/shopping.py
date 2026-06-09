@@ -21,10 +21,44 @@ from __future__ import annotations
 from pydantic import ConfigDict
 
 from ....checkout import Checkout as Checkout_1
+from ....checkout_create_request import (
+    CheckoutCreateRequest as CheckoutCreateRequest_1,
+)
+from ....checkout_update_request import (
+    CheckoutUpdateRequest as CheckoutUpdateRequest_1,
+)
 from ... import Buyer
 
 
+class CheckoutUpdateRequest(CheckoutUpdateRequest_1):
+    """
+    Checkout extended with consent tracking via buyer object.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    buyer: Buyer | None = None
+    """
+    Buyer with consent tracking.
+    """
+
+
 class Checkout(Checkout_1):
+    """
+    Checkout extended with consent tracking via buyer object.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    buyer: Buyer | None = None
+    """
+    Buyer with consent tracking.
+    """
+
+
+class CheckoutCreateRequest(CheckoutCreateRequest_1):
     """
     Checkout extended with consent tracking via buyer object.
     """

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from .checkout import Checkout as Checkout_1
 from .types import (
     attribution_update_request,
     buyer_update_request,
@@ -57,18 +56,4 @@ class CartUpdateRequest(BaseModel):
     buyer: buyer_update_request.BuyerUpdateRequest | None = None
     """
     Optional buyer information for personalized estimates.
-    """
-
-
-class Checkout(Checkout_1):
-    """
-    Checkout extended with cart capability. Adds cart_id to create_checkout for cart-to-checkout conversion.
-    """
-
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    cart_id: str | None = None
-    """
-    Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload.
     """

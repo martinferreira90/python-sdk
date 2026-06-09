@@ -22,6 +22,9 @@ from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict
 
 from .. import ucp as ucp_1
 from .checkout import Checkout as Checkout_1
+from .checkout_create_request import (
+    CheckoutCreateRequest as CheckoutCreateRequest_1,
+)
 from .types import attribution as attribution_1
 from .types import buyer as buyer_1
 from .types import context as context_1
@@ -84,6 +87,20 @@ class Cart(BaseModel):
 
 
 class Checkout(Checkout_1):
+    """
+    Checkout extended with cart capability. Adds cart_id to create_checkout for cart-to-checkout conversion.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    cart_id: str | None = None
+    """
+    Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload.
+    """
+
+
+class CheckoutCreateRequest(CheckoutCreateRequest_1):
     """
     Checkout extended with cart capability. Adds cart_id to create_checkout for cart-to-checkout conversion.
     """

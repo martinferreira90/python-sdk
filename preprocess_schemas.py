@@ -354,12 +354,40 @@ def rewrite_refs_to_variants(root, op, file_path, variant_needs):
                     )
 
 
+def _strip_extension_defs(variant_schema):
+    """
+    Remove $defs entries that compose with an external base via allOf — these
+    are extension schemas (and their variants) that belong to the source file,
+    not to its operation-specific variants. Carrying them over makes codegen
+    emit duplicate sibling classes (e.g. a leaked PlatformSchema in
+    order_create_request.py). Plain type aliases (no external base) are kept
+    because variants legitimately reference them via local $refs.
+    """
+    defs = variant_schema.get("$defs")
+    if not isinstance(defs, dict):
+        return
+    for name in list(defs.keys()):
+        d = defs[name]
+        if not isinstance(d, dict):
+            continue
+        if any(
+            isinstance(item, dict)
+            and isinstance(item.get("$ref"), str)
+            and "#" not in item["$ref"]
+            for item in (d.get("allOf") or [])
+        ):
+            del defs[name]
+    if not defs:
+        variant_schema.pop("$defs", None)
+
+
 def _create_single_variant(
     schema, op, stem, file_path, global_variant_requirements
 ):
     """Creates a modified copy of the schema tailored for a specific operation."""
     variant = copy.deepcopy(schema)
     update_variant_identity(variant, op, stem)
+    _strip_extension_defs(variant)
 
     new_props = {}
     new_required = []
@@ -394,6 +422,149 @@ def generate_variants(path, schema, ops, global_variant_requirements):
         out = file_path.parent / f"{file_path.stem}_{op}_request.json"
         save_json(variant, out)
         sys.stdout.write(f"Generated variant: {out}\n")
+
+
+# --- Extension Variant Generation ($defs that compose with an external base) ---
+
+
+def find_extension_defs(schema):
+    """
+    Locate $defs entries that extend an external base schema (via allOf with
+    an external $ref) and declare ucp_request markers on their own properties.
+
+    These are 'extension schemas' like the one in shopping/fulfillment.json
+    that adds a `fulfillment` field to Checkout. The original variant generator
+    only scans top-level properties and never sees them.
+
+    Returns: list of (def_name, def_schema, ops_set).
+    """
+    defs = schema.get("$defs") or {}
+    if not isinstance(defs, dict):
+        return []
+
+    results = []
+    for name, d in defs.items():
+        if not isinstance(d, dict):
+            continue
+        has_external_base = any(
+            isinstance(item, dict)
+            and isinstance(item.get("$ref"), str)
+            and "#" not in item["$ref"]
+            for item in (d.get("allOf") or [])
+        )
+        if not has_external_base:
+            continue
+
+        ops = set()
+        for prop_data in (d.get("properties") or {}).values():
+            if not isinstance(prop_data, dict):
+                continue
+            marker = prop_data.get("ucp_request")
+            if isinstance(marker, str):
+                ops.update(["create", "update"])
+            elif isinstance(marker, dict):
+                for op, val in marker.items():
+                    if val != "omit":
+                        ops.add(op)
+        if ops:
+            results.append((name, d, ops))
+    return results
+
+
+def _inline_local_ref_alias(node, root_schema):
+    """
+    If `node` carries a local $ref whose target in $defs is itself just a thin
+    `{"$ref": "<external>.json"}` alias, replace the local ref with that
+    external ref so `rewrite_refs_to_variants` can swap in the variant target.
+    """
+    if not isinstance(node, dict):
+        return
+    ref = node.get("$ref")
+    if not isinstance(ref, str) or not ref.startswith("#/"):
+        return
+    resolved = resolve_local_ref(ref, root_schema)
+    if isinstance(resolved, dict) and len(resolved) == 1 and "$ref" in resolved:
+        node["$ref"] = resolved["$ref"]
+
+
+def _rewrite_extension_base_ref(variant_schema, op, file_path, variant_needs):
+    """Repoint the external $ref in allOf at the base schema's variant file."""
+    for item in variant_schema.get("allOf") or []:
+        if not isinstance(item, dict):
+            continue
+        ref = item.get("$ref")
+        if not isinstance(ref, str) or "#" in ref:
+            continue
+        abs_target = str((file_path.parent / ref).resolve())
+        if abs_target in variant_needs and op in variant_needs[abs_target]:
+            p = Path(ref)
+            item["$ref"] = str(p.parent / f"{p.stem}_{op}_request.json")
+
+
+def _create_extension_variant(
+    def_schema, op, def_name, file_path, root_schema, variant_needs
+):
+    """Build a per-op variant copy of an extension $defs entry."""
+    variant = copy.deepcopy(def_schema)
+
+    base_title = variant.get("title", def_name)
+    variant["title"] = f"{base_title} {op.capitalize()} Request"
+
+    new_props = {}
+    new_required = []
+    base_req = def_schema.get("required", [])
+    for name, data in (def_schema.get("properties") or {}).items():
+        include, required = eval_prop_inclusion(name, data, op, base_req)
+        if not include:
+            continue
+        prop_data = copy.deepcopy(data)
+        if isinstance(prop_data, dict):
+            prop_data.pop("ucp_request", None)
+            _inline_local_ref_alias(prop_data, root_schema)
+            rewrite_refs_to_variants(prop_data, op, file_path, variant_needs)
+        new_props[name] = prop_data
+        if required:
+            new_required.append(name)
+    variant["properties"] = new_props
+    variant["required"] = new_required
+
+    _rewrite_extension_base_ref(variant, op, file_path, variant_needs)
+    return variant
+
+
+def generate_extension_variants(schemas, variant_needs):
+    """
+    For each schema whose $defs declares extension entries with ucp_request
+    markers, add per-op variant $defs entries alongside them so codegen emits
+    matching extended request models (e.g. CheckoutCreateRequest with the
+    fulfillment field).
+    """
+    for p_abs, schema in schemas.items():
+        if "ucp.json" in p_abs:
+            continue
+        extensions = find_extension_defs(schema)
+        if not extensions:
+            continue
+        defs = schema["$defs"]
+        file_path = Path(p_abs)
+        for def_name, def_schema, ops in extensions:
+            for op in ops:
+                variant_name = f"{def_name}_{op}_request"
+                if variant_name in defs:
+                    continue
+                defs[variant_name] = _create_extension_variant(
+                    def_schema,
+                    op,
+                    def_name,
+                    file_path,
+                    schema,
+                    variant_needs,
+                )
+                sys.stdout.write(
+                    f"Generated extension variant: "
+                    f"{file_path.name}#/$defs/{variant_name}\n"
+                )
+        save_json(schema, file_path)
 
 
 # --- Global Normalization ---
@@ -494,7 +665,9 @@ def main():
     1. Pass 1: Local flattening (allOf) and discovery of needed variants
     2. metadata normalization: unifies ucp properties
     3. Pass 2: Transitive propagation (ensuring matched variants for linked schemas)
-    4. Pass 3: Variant file generation (*_request.json)
+    4. Pass 3: Extension variants ($defs entries that compose with an external
+       base, e.g. Checkout-with-Fulfillment) injected into source schemas
+    5. Pass 4: Variant file generation (*_request.json)
     """
     target_dir = Path(
         sys.argv[1] if len(sys.argv) > 1 else "ucp/source/schemas"
@@ -547,7 +720,12 @@ def main():
     # Pass 2: Propagate the need for variants down the dependency tree
     propagate_needs_transitive(variant_needs, schema_refs, schemas)
 
-    # Pass 3: Finally write out the new variant files
+    # Pass 3: Inject extension variants ($defs entries) into source schemas so
+    # codegen emits matching extended *_create/update_request models alongside
+    # the base extension classes.
+    generate_extension_variants(schemas, variant_needs)
+
+    # Pass 4: Finally write out the new variant files
     for path, ops in variant_needs.items():
         generate_variants(path, schemas[path], ops, variant_needs)
 

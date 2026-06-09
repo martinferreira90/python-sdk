@@ -23,6 +23,13 @@ from typing import Any
 from pydantic import ConfigDict, RootModel
 
 from ....checkout import Checkout as Checkout_1
+from ....checkout_create_request import (
+    CheckoutCreateRequest as CheckoutCreateRequest_1,
+)
+from ....checkout_update_request import (
+    CheckoutUpdateRequest as CheckoutUpdateRequest_1,
+)
+from ....types import fulfillment_create_request, fulfillment_update_request
 from ... import Fulfillment as Fulfillment_1
 
 
@@ -31,6 +38,38 @@ class Fulfillment(RootModel[Any]):
         frozen=True,
     )
     root: Any
+
+
+class CheckoutUpdateRequest(CheckoutUpdateRequest_1):
+    """
+    Checkout extended with hierarchical fulfillment.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    fulfillment: fulfillment_update_request.FulfillmentUpdateRequest | None = (
+        None
+    )
+    """
+    Fulfillment details.
+    """
+
+
+class CheckoutCreateRequest(CheckoutCreateRequest_1):
+    """
+    Checkout extended with hierarchical fulfillment.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    fulfillment: fulfillment_create_request.FulfillmentCreateRequest | None = (
+        None
+    )
+    """
+    Fulfillment details.
+    """
 
 
 class Checkout(Checkout_1):

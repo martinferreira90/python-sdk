@@ -21,8 +21,49 @@ from __future__ import annotations
 from pydantic import ConfigDict
 
 from ....cart import Cart as Cart_1
+from ....cart_create_request import CartCreateRequest as CartCreateRequest_1
+from ....cart_update_request import CartUpdateRequest as CartUpdateRequest_1
 from ....checkout import Checkout as Checkout_1
+from ....checkout_create_request import (
+    CheckoutCreateRequest as CheckoutCreateRequest_1,
+)
+from ....checkout_update_request import (
+    CheckoutUpdateRequest as CheckoutUpdateRequest_1,
+)
 from ... import DiscountsObject
+
+
+class CartUpdateRequest(CartUpdateRequest_1):
+    """
+    Cart extended with discount capability.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    discounts: DiscountsObject | None = None
+
+
+class CartCreateRequest(CartCreateRequest_1):
+    """
+    Cart extended with discount capability.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    discounts: DiscountsObject | None = None
+
+
+class CheckoutUpdateRequest(CheckoutUpdateRequest_1):
+    """
+    Checkout extended with discount capability.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    discounts: DiscountsObject | None = None
 
 
 class Cart(Cart_1):
@@ -37,6 +78,17 @@ class Cart(Cart_1):
 
 
 class Checkout(Checkout_1):
+    """
+    Checkout extended with discount capability.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    discounts: DiscountsObject | None = None
+
+
+class CheckoutCreateRequest(CheckoutCreateRequest_1):
     """
     Checkout extended with discount capability.
     """
